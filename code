@@ -1,0 +1,269 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+public class PizzaShopGUI extends JFrame {
+    private List<String> selectedToppings = new ArrayList<>();
+    private JTextArea orderSummaryArea;
+    private JButton placeOrderButton;
+    private JPanel orderPanel;
+
+    // New login-related variables
+    private static final String USERNAME = "pizza";
+    private static final String PASSWORD = "pizza";
+
+    public PizzaShopGUI() {
+        System.out.println("Creating GUI...");
+        setTitle("Pizza Palace");
+        setSize(600, 500);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        // Check login before proceeding
+        if (!authenticateUser()) {
+            JOptionPane.showMessageDialog(this, "Invalid username or password.", "Login Failed", JOptionPane.ERROR_MESSAGE);
+            System.exit(0); // Exit application if authentication fails
+        }
+
+        // Header Panel
+        JPanel headerPanel = new JPanel();
+        headerPanel.setBackground(new Color(255, 102, 0)); // Orange background for header
+        JLabel titleLabel = new JLabel("Welcome to Pizza Palace", JLabel.CENTER);
+        titleLabel.setFont(new Font("Arial", Font.BOLD, 30));
+        titleLabel.setForeground(Color.WHITE);
+        headerPanel.add(titleLabel);
+        add(headerPanel, BorderLayout.NORTH);
+
+        // Main Panel for content
+        orderPanel = new JPanel();
+        orderPanel.setLayout(new BorderLayout());
+        orderPanel.setBackground(new Color(255, 235, 204)); // Light background color
+
+        // Order Summary Area
+        orderSummaryArea = new JTextArea();
+        orderSummaryArea.setFont(new Font("Arial", Font.PLAIN, 14));
+        orderSummaryArea.setEditable(false);
+        orderSummaryArea.setBackground(Color.WHITE);
+        orderSummaryArea.setBorder(BorderFactory.createLineBorder(Color.BLACK, 1));
+        orderPanel.add(new JScrollPane(orderSummaryArea), BorderLayout.CENTER);
+
+        // Place Order Button
+        placeOrderButton = new JButton("Place Order");
+        placeOrderButton.setFont(new Font("Arial", Font.PLAIN, 18));
+        placeOrderButton.setBackground(new Color(255, 102, 0)); // Orange background
+        placeOrderButton.setForeground(Color.WHITE);
+        placeOrderButton.setFocusPainted(false);
+        placeOrderButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                placeOrder();
+            }
+        });
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.setBackground(new Color(255, 235, 204)); // Match background
+        buttonPanel.add(placeOrderButton);
+        orderPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        add(orderPanel, BorderLayout.CENTER);
+    }
+
+    private boolean authenticateUser() {
+        JPanel loginPanel = new JPanel();
+        loginPanel.setLayout(new BoxLayout(loginPanel, BoxLayout.Y_AXIS));
+
+        JTextField usernameField = new JTextField(15);
+        JPasswordField passwordField = new JPasswordField(15);
+
+        loginPanel.add(new JLabel("Username:"));
+        loginPanel.add(usernameField);
+        loginPanel.add(new JLabel("Password:"));
+        loginPanel.add(passwordField);
+
+        int option = JOptionPane.showConfirmDialog(this, loginPanel, "Login", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (option == JOptionPane.OK_OPTION) {
+            String username = usernameField.getText();
+            String password = new String(passwordField.getPassword());
+
+            return USERNAME.equals(username) && PASSWORD.equals(password);
+        }
+        return false; // Cancel button pressed or dialog closed
+    }
+
+    private void placeOrder() {
+        // Show pizza menu with a more appealing dialog
+        String[] pizzas = {"Cheese Burst Pizza", "Veggie Pizza", "Paneer Pizza", "Pepperoni Pizza"};
+        double[] pizzaPrices = {250.0, 150.0, 200.0, 400.0};
+
+        String pizzaChoice = (String) JOptionPane.showInputDialog(this, "Choose a Pizza:",
+                "Pizza Selection", JOptionPane.PLAIN_MESSAGE, null, pizzas, pizzas[0]);
+
+        if (pizzaChoice == null) return; // If canceled
+
+        // Validate pizza size input
+        String size = getPizzaSize();
+
+        // Validate quantity input
+        int quantity = 0;
+        boolean validQuantity = false;
+        while (!validQuantity) {
+            String quantityStr = JOptionPane.showInputDialog(this, "Enter quantity:", null, JOptionPane.PLAIN_MESSAGE);
+            try {
+                if (quantityStr != null && !quantityStr.isEmpty()) {
+                    quantity = Integer.parseInt(quantityStr);
+                    validQuantity = true;
+                } else {
+                    JOptionPane.showMessageDialog(this, "Quantity cannot be empty. Please enter a valid number.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(this, "Invalid quantity. Please enter a valid number.", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+
+        double orderTotal = pizzaPrices[findPizzaIndex(pizzaChoice)] * quantity;
+
+        // Toppings selection panel
+        JPanel toppingsPanel = new JPanel();
+        toppingsPanel.setLayout(new BoxLayout(toppingsPanel, BoxLayout.Y_AXIS));
+        String[] allToppings = {"Olives", "Mushrooms", "Peppers", "Onions", "Cheese"};
+        JCheckBox[] toppingCheckBoxes = new JCheckBox[allToppings.length];
+
+        for (int i = 0; i < allToppings.length; i++) {
+            toppingCheckBoxes[i] = new JCheckBox(allToppings[i]);
+            toppingCheckBoxes[i].setFont(new Font("Arial", Font.PLAIN, 14)); // Better font
+            toppingsPanel.add(toppingCheckBoxes[i]);
+        }
+
+        int option = JOptionPane.showConfirmDialog(this, toppingsPanel, "Choose Toppings",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+
+        if (option == JOptionPane.OK_OPTION) {
+            // Collect selected toppings
+            selectedToppings.clear();
+            for (JCheckBox checkBox : toppingCheckBoxes) {
+                if (checkBox.isSelected()) {
+                    selectedToppings.add(checkBox.getText());
+                }
+            }
+        }
+
+        // Show order summary in the text area
+        String orderSummary = String.format("Pizza: %s\nSize: %s\nQuantity: %d\nToppings: %s\nTotal Price: INR %.2f",
+                pizzaChoice, size, quantity, String.join(", ", selectedToppings), orderTotal);
+
+        orderSummaryArea.setText(orderSummary);
+
+        // Ask for customer details
+        String customerName = getCustomerName();
+        String customerEmail = getCustomerEmail();
+
+        // Save order to database
+        insertOrderToDatabase(customerName, customerEmail, pizzaChoice, size, quantity, selectedToppings, orderTotal);
+
+        // Display order placed confirmation
+        JOptionPane.showMessageDialog(this, "Your order has been placed successfully!", "Order Placed", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private int findPizzaIndex(String pizzaChoice) {
+        String[] pizzas = {"Cheese Burst Pizza", "Veggie Pizza", "Paneer Pizza", "Pepperoni Pizza"};
+        for (int i = 0; i < pizzas.length; i++) {
+            if (pizzas[i].equals(pizzaChoice)) {
+                return i;
+            }
+        }
+        return -1; // If pizza not found
+    }
+
+    private void insertOrderToDatabase(String name, String email, String pizza, String size, int quantity,
+                                       List<String> toppings, double totalPrice) {
+        String url = "jdbc:mysql://localhost:3306/pizza_shop"; // New database name
+        String dbUsername = "root";  // MySQL username (default)
+        String dbPassword = ""; // MySQL password (default is empty)
+
+        String query = "INSERT INTO pizza_shop_gui (name, email, pizza, size, quantity, toppings, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+        // Load MySQL JDBC driver
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver"); // Load MySQL JDBC driver
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+            return; // Return if driver is not found
+        }
+
+        // Database connection and insert statement
+        try (Connection connection = DriverManager.getConnection(url, dbUsername, dbPassword)) {
+            try (PreparedStatement stmt = connection.prepareStatement(query)) {
+                stmt.setString(1, name);
+                stmt.setString(2, email);
+                stmt.setString(3, pizza);
+                stmt.setString(4, size);
+                stmt.setInt(5, quantity);
+                stmt.setString(6, String.join(", ", toppings));
+                stmt.setDouble(7, totalPrice);
+
+                stmt.executeUpdate();
+                System.out.println("Order has been saved to the database.");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace(); // Catch SQL exceptions
+        }
+    }
+
+    // Validate Name: Only letters (a-z, A-Z)
+    public boolean isValidName(String name) {
+        String nameRegex = "^[a-zA-Z]+$";  // Only letters
+        Pattern pattern = Pattern.compile(nameRegex);
+        Matcher matcher = pattern.matcher(name);
+        return matcher.matches();
+    }
+
+    // Validate Email: Simple email regex
+    public boolean isValidEmail(String email) {
+        String emailRegex = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$";
+        Pattern pattern = Pattern.compile(emailRegex);
+        Matcher matcher = pattern.matcher(email);
+        return matcher.matches();
+    }
+
+    private String getPizzaSize() {
+        String[] sizes = {"Small", "Medium", "Large"};
+        String size = (String) JOptionPane.showInputDialog(this, "Select pizza size:", "Pizza Size",
+                JOptionPane.PLAIN_MESSAGE, null, sizes, sizes[0]);
+        return size != null ? size : "Medium"; // Default to Medium if canceled
+    }
+
+    private String getCustomerName() {
+        String name = "";
+        while (!isValidName(name)) {
+            name = JOptionPane.showInputDialog(this, "Enter your name:", null, JOptionPane.PLAIN_MESSAGE);
+            if (name == null || !isValidName(name)) {
+                JOptionPane.showMessageDialog(this, "Invalid name. Only letters are allowed.", "Invalid Name", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+        return name;
+    }
+
+    private String getCustomerEmail() {
+        String email = "";
+        while (!isValidEmail(email)) {
+            email = JOptionPane.showInputDialog(this, "Enter your email:", null, JOptionPane.PLAIN_MESSAGE);
+            if (email == null || !isValidEmail(email)) {
+                JOptionPane.showMessageDialog(this, "Invalid email. Please enter a valid email.", "Invalid Email", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+        return email;
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            PizzaShopGUI app = new PizzaShopGUI();
+            app.setVisible(true);
+        });
+    }
+}
